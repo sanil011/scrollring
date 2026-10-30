@@ -35,9 +35,14 @@ test("scrolling to the middle shows rows near the middle", async ({ page }) => {
   await page.locator("#list").evaluate((el) => {
     el.scrollTop = el.scrollHeight / 2;
   });
-  const text = await page
-    .locator("#list .scroll-row:visible")
-    .first()
-    .textContent();
-  expect(Number(text!.replace("Row ", ""))).toBeGreaterThan(49_900);
+  // The scroll event is async, so poll until the list has repainted.
+  await expect
+    .poll(async () => {
+      const text = await page
+        .locator("#list .scroll-row:visible")
+        .first()
+        .textContent();
+      return Number(text!.replace("Row ", ""));
+    })
+    .toBeGreaterThan(49_900);
 });
