@@ -1,61 +1,61 @@
-// -----------------------------------
-// ComputeRange - primary scroll-window calculation
-// -----------------------------------
+// Pure layout math for a fixed-row-height list. No DOM access, so it can be
+// unit-tested in Node.
 
-type ComputeRangeOptions = {
+export interface WindowInput {
+  /** Current scroll offset in px. Negative values (overscroll bounce) count as 0. */
   scrollTop: number;
-  vpHeight: number;
+  /** Visible height of the scroll container in px. */
+  viewportHeight: number;
+  /** Height of every row in px. */
   rowHeight: number;
-  totalData: number;
-  buffer: number;
-};
+  /** Number of rows in the list. */
+  count: number;
+  /** Extra rows to include above and below the visible ones. */
+  overscan: number;
+}
 
-type ComputeRangeResult = {
+/** Rows `start` (inclusive) to `end` (exclusive). */
+export interface RowWindow {
   start: number;
   end: number;
-};
+}
 
 /**
- * Compute the [start,end] row index range to render given scroll state.
- * O(1) - fixed row height and pure integer arithmetic.
- * @param {number} options.scrollTop  Scroll offset in px (>= 0)
- * @param {number} options.vpHeight   viewport height px (> 0)
- * @param {number} options.rowHeight  row height (> 0)
- * @param {number} options.totalData  total row count (> 0)
- * @param {number} options.buffer     extra row count (> 0)
- * @returns {{start:number, end:number}}
+ * Which rows should be in the DOM for the given scroll position.
+ * Always returns `0 <= start <= end <= count`.
  */
-
-export function computeRange({
+export function getWindow({
   scrollTop,
-  vpHeight,
+  viewportHeight,
   rowHeight,
-  totalData,
-  buffer,
-}: ComputeRangeOptions): ComputeRangeResult {
+  count,
+  overscan,
+}: WindowInput): RowWindow {
+  if (count <= 0 || rowHeight <= 0) return { start: 0, end: 0 };
 
-  if (totalData <= 0) return { start: 0, end: 0 };
-  if (rowHeight <= 0) return { start: 0, end: 0 };
-  if (scrollTop < 0) scrollTop = 0;
+  const top = Math.max(0, scrollTop);
+  // floor: a row cut off at the top is still partly visible.
+  const firstVisible = Math.floor(top / rowHeight);
+  // ceil: same for a row cut off at the bottom. Exclusive.
+  const afterLastVisible = Math.ceil((top + viewportHeight) / rowHeight);
 
-  let visStart = Math.floor(scrollTop / rowHeight) ;
-  let visEnd = Math.ceil((scrollTop + vpHeight) / rowHeight);
-
-  let start = visStart - buffer;
-  let end = visEnd + buffer;
-  if (start < 0) start = 0;
-  if (end > totalData) end = totalData;
-  if (start > end) start = end;
-
+  const end = Math.min(count, afterLastVisible + overscan);
+  // Past the end of the list `firstVisible` can be > end, so clamp to end.
+  const start = Math.min(end, Math.max(0, firstVisible - overscan));
   return { start, end };
 }
 
-
+/**
+ * The most rows `getWindow` can ever return for this viewport, which is
+ * also the number of DOM nodes the list needs.
+ *
+ * A viewport of `n` rows' height can show parts of `ceil(n) + 1` rows
+ * (one cut off at the top, one at the bottom), plus overscan on each side.
+ */
 export function maxWindowSize(
-  vpHeight: number,
+  viewportHeight: number,
   rowHeight: number,
-  buffer: number,
+  overscan: number,
 ): number {
-  return Math.ceil(vpHeight / rowHeight) + 1 + 2 * buffer;
+  return Math.ceil(viewportHeight / rowHeight) + 1 + 2 * overscan;
 }
-
