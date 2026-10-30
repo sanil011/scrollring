@@ -97,6 +97,38 @@ describe("createScrollRing", () => {
     expect(row49.style.transform).toContain("1920px"); // 48 * 40
   });
 
+  it("draws row i with the node at slot i % poolSize (ring assignment)", () => {
+    const ring = create();
+    ring.setData(makeItems(1000));
+    const poolSize = 15;
+
+    for (const top of [0, 2020, 13_337, 39_600]) {
+      scrollTo(container, top);
+      const nodes = [...container.querySelectorAll<HTMLElement>(".scroll-row")];
+      nodes.forEach((node, slot) => {
+        if (node.style.display === "none") return;
+        const row = Number(node.textContent!.slice("Row ".length)) - 1;
+        expect(row % poolSize).toBe(slot);
+      });
+    }
+  });
+
+  it("caps the window at the pool size if the container grows", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ring = create();
+    ring.setData(makeItems(1000));
+
+    // Taller than at creation, and there is no ResizeObserver yet.
+    Object.defineProperty(container, "clientHeight", { get: () => 800 });
+    scrollTo(container, 2020);
+
+    const shown = shownRows(container);
+    expect(shown).toHaveLength(15);
+    expect(new Set(shown).size).toBe(15);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
   it("redraws when setData is called with different data (regression)", () => {
     const ring = create();
     ring.setData(makeItems(1000, "A"));
