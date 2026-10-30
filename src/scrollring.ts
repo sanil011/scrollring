@@ -1,14 +1,20 @@
-import { Pool } from "./pool";
-import { computeRange } from "./math";
+import { computeRange, maxWindowSize } from "./math";
 
 export interface RowContext {
   index: number;
 }
 
 export interface ScrollRingOptions<T> {
+  /** Fixed height of every row, in px. */
   rowHeight: number;
+  /** Id of the scrolling element. It needs a fixed height in CSS. */
   scrollContainer: string;
-  renderRow: any;
+  /**
+   * Fill `node` with `item`. Nodes are reused for different rows, so this
+   * must overwrite everything a previous call may have set.
+   */
+  renderRow: (node: HTMLElement, item: T, ctx: RowContext) => void;
+  /** Extra rows rendered above and below the viewport. Default 50. */
   buffer?: number;
 }
 
@@ -19,193 +25,177 @@ export interface ScrollRing<T> {
 }
 
 const DEFAULT_BUFFER = 50;
+const EMPTY = -1;
 
 export function createScrollRing<T = unknown>(
   options: ScrollRingOptions<T>,
 ): ScrollRing<T> {
   const scrollContainer = _resolveElement(options.scrollContainer);
-  if (options.rowHeight <= 0) {
+  const { rowHeight, renderRow } = options;
+
+  if (rowHeight <= 0) {
     throw new Error(
       "Please provide a fixed rowHeight for the container where elements will be rendered.",
     );
   }
 
-  if (scrollContainer.clientHeight < options.rowHeight) {
+  if (scrollContainer.clientHeight < rowHeight) {
     throw new Error("Scroll container has no height");
   }
 
+  const buffer = options.buffer ?? DEFAULT_BUFFER;
+
   scrollContainer.style.overflow = "auto";
 
+  // Its height is the full list height, which gives the scrollbar its size.
   const rowContainer = document.createElement("div");
-  rowContainer.id = "row-container";
+  rowContainer.className = "scroll-ring-rows";
   rowContainer.style.position = "relative";
   scrollContainer.appendChild(rowContainer);
 
-  const buffer = options.buffer ?? DEFAULT_BUFFER;
+  // The ring: row `i` is always drawn by nodes[i % poolSize]. The window is
+  // never longer than poolSize, so its rows all map to different slots.
+  const poolSize = maxWindowSize(
+    scrollContainer.clientHeight,
+    rowHeight,
+    buffer,
+  );
+  const nodes = createNodes(rowContainer, poolSize, rowHeight);
+  // rowOf[slot] = the row nodes[slot] is showing, or EMPTY.
+  const rowOf = new Int32Array(poolSize).fill(EMPTY);
 
-  const vpH = scrollContainer.clientHeight;
-  const visibleRows = Math.ceil(vpH / options.rowHeight) + 1;
-  const poolSize = visibleRows + buffer + buffer;
-
-  const pool = new Pool({
-    rowContainer,
-    rowHeight: options.rowHeight,
-    size: poolSize,
-  }).create();
-
-  // states
   let data: readonly T[] = [];
-  let _range = { start: 0, end: 0 };
-  let _destroyed = false;
+  let range = { start: 0, end: 0 };
+  let destroyed = false;
+  let warnedOverflow = false;
 
-  // Pool node → task index. -1 means unbound.
-  const _nodeToTaskIdx = new Int32Array(poolSize).fill(-1);
+  function update() {
+    if (destroyed) return;
 
-  // Reused per call to avoid allocating a Set on every range change.
-  const _scratchBoundArray: boolean[] = [];
-  let _scanFrom = 0;
-
-  function _findFreeNode(): number {
-    for (let i = _scanFrom; i < poolSize; i++) {
-      if (_nodeToTaskIdx[i] === -1) {
-        _scanFrom = i + 1;
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  function _update() {
-    if (_destroyed) return;
-
-    let newRange = computeRange({
+    const next = computeRange({
       scrollTop: scrollContainer.scrollTop,
       vpHeight: scrollContainer.clientHeight,
       totalData: data.length,
       buffer,
-      rowHeight: options.rowHeight,
+      rowHeight,
     });
 
-    if (newRange.start === _range.start && newRange.end === _range.end) return;
-    _range = newRange;
-    _applyRange();
+    if (next.start === range.start && next.end === range.end) return;
+    range = next;
+    paintRange(range.start, range.end);
   }
 
-  function _applyRange() {
-    const start = _range.start;
-    const end = _range.end;
-
-    //  release out-of-range bindings.
-    for (let nodeIdx = 0; nodeIdx < poolSize; nodeIdx++) {
-      const taskIdx = _nodeToTaskIdx[nodeIdx];
-      if (taskIdx < 0) continue; // already free
-      if (taskIdx >= start && taskIdx < end) continue; // still in range
-      const node = pool.findByIndex(nodeIdx);
-      pool.unbind(nodeIdx);
-      pool.hide(nodeIdx);
-      _nodeToTaskIdx[nodeIdx] = -1;
-    }
-
-    // Which rows already have a node?
-    const bound = _scratchBoundArray;
-    bound.length = 0; // reset reused array's effective size
-    for (let nodeIdx = 0; nodeIdx < poolSize; nodeIdx++) {
-      const t = _nodeToTaskIdx[nodeIdx];
-      if (t >= 0) bound[t] = true;
-    }
-    _scanFrom = 0;
-
-    // Bind free nodes to rows that entered the range.
-    for (let taskIdx = start; taskIdx < end; taskIdx++) {
-      if (bound[taskIdx]) continue; //already bound
-      const taskData = data[taskIdx];
-      if (taskData == null) continue;
-
-      const nodeIdx = _findFreeNode();
-      if (nodeIdx < 0) {
-        console.error("ScrollRing: pool exhausted", { poolSize, start, end });
-        break;
+  function paintRange(start: number, end: number) {
+    // Can happen if the container grew after the pool was sized.
+    // Two rows would then share a slot, so drop the extra rows.
+    if (end - start > poolSize) {
+      if (!warnedOverflow) {
+        warnedOverflow = true;
+        console.error("ScrollRing: window is larger than the pool", {
+          poolSize,
+          start,
+          end,
+        });
       }
+      end = start + poolSize;
+    }
 
-      const dataId = _getDataId(taskData, taskIdx);
-      const node = pool.findByIndex(nodeIdx);
-      pool.bind(nodeIdx, dataId);
-      pool.position(nodeIdx, taskIdx * options.rowHeight);
-      _nodeToTaskIdx[nodeIdx] = taskIdx;
-      // renderRow MUST mutate node in place. Errors are caught & logged;
-      // an exception in user code never breaks the library.
+    // 1. Give every row in the window its slot. Slots that already show
+    //    the right row are skipped, so a small scroll touches few nodes.
+    for (let row = start; row < end; row++) {
+      const slot = row % poolSize;
+      if (rowOf[slot] === row) continue;
+
+      const node = nodes[slot];
       try {
-        options.renderRow(node, taskData, { index: taskIdx });
+        renderRow(node, data[row], { index: row });
       } catch (e) {
-        console.log(e, { fn: "renderRow", taskIdx: taskIdx });
+        // A bug in user code shouldn't break the list.
+        console.error("ScrollRing: renderRow threw", { index: row }, e);
       }
-
-      pool.show(nodeIdx);
+      node.style.transform = "translate3d(0," + row * rowHeight + "px,0)";
+      node.style.display = "";
+      rowOf[slot] = row;
     }
 
-    // Clean reusable array — clears refs held by `bound[i] = true` slots.
-    for (let i = start; i < end; i++) bound[i] = false;
+    // 2. Hide slots that were not reused: their row left the window.
+    for (let slot = 0; slot < poolSize; slot++) {
+      const row = rowOf[slot];
+      if (row === EMPTY || (row >= start && row < end)) continue;
+      nodes[slot].style.display = "none";
+      rowOf[slot] = EMPTY;
+    }
   }
 
   function setData(newData: readonly T[]): void {
-    if (_destroyed) throw new Error("ScrollRing: instance destroyed");
+    if (destroyed) throw new Error("ScrollRing: instance destroyed");
     if (!Array.isArray(newData)) {
       throw new TypeError("ScrollRing: data must be an array");
     }
     data = newData;
-    rowContainer.style.height = `${data.length * options.rowHeight}px`;
+    rowContainer.style.height = `${data.length * rowHeight}px`;
 
-    // Drop every binding so the next render redraws all rows with the new data.
-    for (let i = 0; i < poolSize; i++) {
-      if (_nodeToTaskIdx[i] !== -1) {
-        pool.unbind(i);
-        pool.hide(i);
-        _nodeToTaskIdx[i] = -1;
-      }
-    }
-    _range = { start: 0, end: 0 };
+    // Forget what every slot shows, or the skip check in paintRange would
+    // keep old content on screen.
+    rowOf.fill(EMPTY);
+    for (const node of nodes) node.style.display = "none";
+    range = { start: 0, end: 0 };
 
-    _update();
-  }
-
-  // ── Scroll handler ─────────────────────────────────────────────
-  function _onScroll() {
-    _update();
+    update();
   }
 
   function scrollToIndex(index: number): void {
-    if (_destroyed || data.length === 0) return;
+    if (destroyed || data.length === 0) return;
     const i = Math.max(0, Math.min(Math.floor(index), data.length - 1));
-    scrollContainer.scrollTop = i * options.rowHeight;
+    scrollContainer.scrollTop = i * rowHeight;
   }
 
   function destroy(): void {
-    if (_destroyed) return;
-    _destroyed = true;
-    scrollContainer.removeEventListener("scroll", _onScroll);
-    pool.destroy();
+    if (destroyed) return;
+    destroyed = true;
+    scrollContainer.removeEventListener("scroll", update);
     rowContainer.remove();
   }
 
-  scrollContainer.addEventListener("scroll", _onScroll, { passive: true });
+  scrollContainer.addEventListener("scroll", update, { passive: true });
 
   return { setData, scrollToIndex, destroy };
 }
 
-function _getDataId(item: any, fallbackIdx: number) {
-  if (item && item.id !== undefined && item.id !== null) return String(item.id);
-  return String(fallbackIdx);
+function createNodes(
+  parent: HTMLElement,
+  count: number,
+  rowHeight: number,
+): HTMLElement[] {
+  const fragment = document.createDocumentFragment();
+  const nodes: HTMLElement[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const node = document.createElement("div");
+    node.className = "scroll-row";
+    const st = node.style;
+    st.position = "absolute";
+    st.top = "0";
+    st.left = "0";
+    st.right = "0";
+    st.height = `${rowHeight}px`;
+    st.boxSizing = "border-box";
+    // Row content can't change the size or paint of anything outside it.
+    st.contain = "layout paint";
+    st.display = "none";
+    fragment.appendChild(node);
+    nodes.push(node);
+  }
+
+  parent.appendChild(fragment);
+  return nodes;
 }
 
 function _resolveElement(elementId: string): HTMLElement {
-  let container =
-    typeof elementId === "string"
-      ? document.getElementById(elementId)
-      : elementId;
-
-  if (!container || typeof container.appendChild !== "function") {
+  const container = document.getElementById(elementId);
+  if (!container) {
     throw new Error(
-      "ScrollRing.create" + elementId + "not found or not an dom element",
+      `ScrollRing: element "${elementId}" not found or not a DOM element`,
     );
   }
   return container;
