@@ -21,14 +21,18 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "dev": "vite --open /demo/",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "types": "./dist/index.d.ts",
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "tsup": "^9.0.0",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
 }
