@@ -163,7 +163,7 @@ describe("createScrollRing", () => {
 
     expect(container.querySelectorAll(".scroll-row")).toHaveLength(0);
     expect(renderRow).not.toHaveBeenCalled();
-    expect(() => ring.setData(makeItems(5))).toThrow(/destroyed/);
+    expect(() => ring.setData(makeItems(5))).toThrow(/after destroy/);
   });
 
   it("survives a renderRow that throws", () => {

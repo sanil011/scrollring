@@ -1,4 +1,4 @@
-import { computeRange, maxWindowSize } from "./math";
+import { getWindow, maxWindowSize, type RowWindow } from "./math";
 
 export interface RowContext {
   index: number;
@@ -24,65 +24,61 @@ export interface ScrollRing<T> {
   destroy(): void;
 }
 
-const DEFAULT_BUFFER = 50;
+const DEFAULT_OVERSCAN = 50;
 const EMPTY = -1;
 
 export function createScrollRing<T = unknown>(
   options: ScrollRingOptions<T>,
 ): ScrollRing<T> {
-  const scrollContainer = _resolveElement(options.scrollContainer);
+  const container = getContainer(options.scrollContainer);
   const { rowHeight, renderRow } = options;
+  const overscan = options.buffer ?? DEFAULT_OVERSCAN;
 
   if (rowHeight <= 0) {
     throw new Error(
       "Please provide a fixed rowHeight for the container where elements will be rendered.",
     );
   }
-
-  if (scrollContainer.clientHeight < rowHeight) {
+  if (container.clientHeight < rowHeight) {
     throw new Error("Scroll container has no height");
   }
 
-  const buffer = options.buffer ?? DEFAULT_BUFFER;
+  container.style.overflow = "auto";
 
-  scrollContainer.style.overflow = "auto";
-
-  // Its height is the full list height, which gives the scrollbar its size.
-  const rowContainer = document.createElement("div");
-  rowContainer.className = "scroll-ring-rows";
-  rowContainer.style.position = "relative";
-  scrollContainer.appendChild(rowContainer);
+  // As tall as the whole list, so the scrollbar has the right size.
+  // The row nodes live inside it.
+  const spacer = document.createElement("div");
+  spacer.className = "scroll-ring-rows";
+  spacer.style.position = "relative";
+  container.appendChild(spacer);
 
   // The ring: row `i` is always drawn by nodes[i % poolSize]. The window is
   // never longer than poolSize, so its rows all map to different slots.
-  const poolSize = maxWindowSize(
-    scrollContainer.clientHeight,
-    rowHeight,
-    buffer,
-  );
-  const nodes = createNodes(rowContainer, poolSize, rowHeight);
+  const poolSize = maxWindowSize(container.clientHeight, rowHeight, overscan);
+  const nodes = createNodes(spacer, poolSize, rowHeight);
   // rowOf[slot] = the row nodes[slot] is showing, or EMPTY.
   const rowOf = new Int32Array(poolSize).fill(EMPTY);
 
-  let data: readonly T[] = [];
-  let range = { start: 0, end: 0 };
-  let destroyed = false;
+  let items: readonly T[] = [];
+  // The window currently on screen; used to skip work when it hasn't moved.
+  let painted: RowWindow = { start: 0, end: 0 };
+  let alive = true;
   let warnedOverflow = false;
 
-  function update() {
-    if (destroyed) return;
+  function syncToScroll() {
+    if (!alive) return;
 
-    const next = computeRange({
-      scrollTop: scrollContainer.scrollTop,
-      vpHeight: scrollContainer.clientHeight,
-      totalData: data.length,
-      buffer,
+    const next = getWindow({
+      scrollTop: container.scrollTop,
+      viewportHeight: container.clientHeight,
       rowHeight,
+      count: items.length,
+      overscan,
     });
+    if (next.start === painted.start && next.end === painted.end) return;
 
-    if (next.start === range.start && next.end === range.end) return;
-    range = next;
-    paintRange(range.start, range.end);
+    painted = next;
+    paintRange(next.start, next.end);
   }
 
   function paintRange(start: number, end: number) {
@@ -108,7 +104,7 @@ export function createScrollRing<T = unknown>(
 
       const node = nodes[slot];
       try {
-        renderRow(node, data[row], { index: row });
+        renderRow(node, items[row], { index: row });
       } catch (e) {
         // A bug in user code shouldn't break the list.
         console.error("ScrollRing: renderRow threw", { index: row }, e);
@@ -127,37 +123,40 @@ export function createScrollRing<T = unknown>(
     }
   }
 
-  function setData(newData: readonly T[]): void {
-    if (destroyed) throw new Error("ScrollRing: instance destroyed");
-    if (!Array.isArray(newData)) {
-      throw new TypeError("ScrollRing: data must be an array");
-    }
-    data = newData;
-    rowContainer.style.height = `${data.length * rowHeight}px`;
-
-    // Forget what every slot shows, or the skip check in paintRange would
-    // keep old content on screen.
+  // Forget what every slot shows. Without this the skip check in
+  // paintRange would keep old content on screen.
+  function clearSlots() {
     rowOf.fill(EMPTY);
     for (const node of nodes) node.style.display = "none";
-    range = { start: 0, end: 0 };
+    painted = { start: 0, end: 0 };
+  }
 
-    update();
+  function setData(newItems: readonly T[]): void {
+    if (!alive) throw new Error("ScrollRing: setData() called after destroy()");
+    if (!Array.isArray(newItems)) {
+      throw new TypeError("ScrollRing: setData() expects an array");
+    }
+
+    items = newItems;
+    spacer.style.height = `${items.length * rowHeight}px`;
+    clearSlots();
+    syncToScroll();
   }
 
   function scrollToIndex(index: number): void {
-    if (destroyed || data.length === 0) return;
-    const i = Math.max(0, Math.min(Math.floor(index), data.length - 1));
-    scrollContainer.scrollTop = i * rowHeight;
+    if (!alive || items.length === 0) return;
+    const row = Math.max(0, Math.min(Math.floor(index), items.length - 1));
+    container.scrollTop = row * rowHeight;
   }
 
   function destroy(): void {
-    if (destroyed) return;
-    destroyed = true;
-    scrollContainer.removeEventListener("scroll", update);
-    rowContainer.remove();
+    if (!alive) return;
+    alive = false;
+    container.removeEventListener("scroll", syncToScroll);
+    spacer.remove();
   }
 
-  scrollContainer.addEventListener("scroll", update, { passive: true });
+  container.addEventListener("scroll", syncToScroll, { passive: true });
 
   return { setData, scrollToIndex, destroy };
 }
@@ -191,12 +190,8 @@ function createNodes(
   return nodes;
 }
 
-function _resolveElement(elementId: string): HTMLElement {
-  const container = document.getElementById(elementId);
-  if (!container) {
-    throw new Error(
-      `ScrollRing: element "${elementId}" not found or not a DOM element`,
-    );
-  }
-  return container;
+function getContainer(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`ScrollRing: element #${id} not found`);
+  return el;
 }
