@@ -24,13 +24,14 @@ export function createScrollRing<T = unknown>(
   options: ScrollRingOptions<T>,
 ): ScrollRing<T> {
   const scrollContainer = _resolveElement(options.scrollContainer);
-
-  const { height } = getComputedStyle(scrollContainer);
-
-  if (height == "0px" || height.split("px")[0] < String(options.rowHeight)) {
+  if (options.rowHeight <= 0) {
     throw new Error(
-      "Please give a fixed height to an container where you want to element rendered",
+      "Please provide a fixed rowHeight for the container where elements will be rendered.",
     );
+  }
+
+  if (scrollContainer.clientHeight < options.rowHeight) {
+    throw new Error("Scroll container has no height");
   }
 
   scrollContainer.style.overflow = "auto";
