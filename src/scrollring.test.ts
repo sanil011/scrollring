@@ -207,3 +207,97 @@ describe("createScrollRing", () => {
     ).toThrow(/not found/);
   });
 });
+
+// jsdom has no ResizeObserver. This fake lets a test fire the callback by hand.
+class FakeResizeObserver {
+  static last: FakeResizeObserver | null = null;
+  disconnected = false;
+  constructor(private callback: () => void) {
+    FakeResizeObserver.last = this;
+  }
+  observe() {}
+  disconnect() {
+    this.disconnected = true;
+  }
+  fire() {
+    if (!this.disconnected) this.callback();
+  }
+}
+
+describe("resizing the container", () => {
+  let container: HTMLElement;
+  let height = 400;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    height = 400;
+    container = makeContainer(400, "list");
+    Object.defineProperty(container, "clientHeight", { get: () => height });
+    FakeResizeObserver.last = null;
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    return () => vi.unstubAllGlobals();
+  });
+
+  const create = () =>
+    createScrollRing<Item>({
+      scrollContainer: "list",
+      rowHeight: 40,
+      buffer: 2,
+      renderRow: (node, item) => {
+        node.textContent = item.name;
+      },
+    });
+  const nodeCount = () => container.querySelectorAll(".scroll-row").length;
+
+  it("grows the pool when the container gets taller", () => {
+    const ring = create();
+    ring.setData(makeItems(1000));
+    scrollTo(container, 2020);
+
+    height = 800;
+    FakeResizeObserver.last!.fire();
+
+    expect(nodeCount()).toBe(25); // ceil(800/40) + 1 + 2*2
+    // visible rows 50..70, window 48..72 = 25 rows, all different
+    const shown = shownRows(container);
+    expect(shown).toHaveLength(25);
+    expect(new Set(shown).size).toBe(25);
+    expect(shown).toContain("Row 49");
+    expect(shown).toContain("Row 73");
+  });
+
+  it("uses the new pool size for ring slots after growing", () => {
+    const ring = create();
+    ring.setData(makeItems(1000));
+    height = 800;
+    FakeResizeObserver.last!.fire();
+
+    for (const top of [0, 2020, 13_337]) {
+      scrollTo(container, top);
+      const nodes = [...container.querySelectorAll<HTMLElement>(".scroll-row")];
+      nodes.forEach((node, slot) => {
+        if (node.style.display === "none") return;
+        const row = Number(node.textContent!.slice("Row ".length)) - 1;
+        expect(row % 25).toBe(slot);
+      });
+    }
+  });
+
+  it("keeps its nodes when the container gets shorter", () => {
+    const ring = create();
+    ring.setData(makeItems(1000));
+
+    height = 200;
+    FakeResizeObserver.last!.fire();
+
+    expect(nodeCount()).toBe(15);
+    // visible rows 0..4, window 0..6 = 7 rows
+    expect(shownRows(container)).toHaveLength(7);
+  });
+
+  it("stops observing on destroy", () => {
+    const ring = create();
+    ring.destroy();
+    expect(FakeResizeObserver.last!.disconnected).toBe(true);
+  });
+});

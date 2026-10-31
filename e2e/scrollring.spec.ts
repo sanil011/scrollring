@@ -46,3 +46,23 @@ test("scrolling to the middle shows rows near the middle", async ({ page }) => {
     })
     .toBeGreaterThan(49_900);
 });
+
+test("making the list taller adds nodes and fills the new space", async ({
+  page,
+}) => {
+  await page.goto("/demo/");
+  const nodes = page.locator("#list .scroll-row");
+  const before = await nodes.count();
+
+  await page.locator("#list").evaluate((el) => {
+    el.style.height = "800px";
+    el.scrollTop = 40 * 5000; // rows from 5000 on, 40px each
+  });
+
+  // ResizeObserver runs after layout, so wait for the pool to grow.
+  await expect.poll(() => nodes.count()).toBeGreaterThan(before);
+  // clientHeight 798 (1px borders): visible rows 5000..5019, window
+  // 4950..5069 = 120 rows. The old pool (111) would stop at index 5060, so
+  // index 5069 ("Row 5070") is only drawn if the pool really grew.
+  await expect(page.getByText("Row 5070", { exact: true })).toBeVisible();
+});
