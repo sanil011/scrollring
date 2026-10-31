@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bench: naive</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #list {
+        height: 400px;
+        overflow: auto;
+      }
+      .scroll-row {
+        height: 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="list"></div>
+    <script type="module">
+      import { data, ITEM_HEIGHT, measureFirstRender, measureScroll } from "./shared.js";
+
+      const list = document.getElementById("list");
+
+      // Every item becomes a real DOM node.
+      function render() {
+        const fragment = document.createDocumentFragment();
+        for (const item of data) {
+          const row = document.createElement("div");
+          row.className = "scroll-row";
+          row.style.height = ITEM_HEIGHT + "px";
+          row.textContent = item.name;
+          fragment.appendChild(row);
+        }
+        list.appendChild(fragment);
+      }
+
+      window.bench = {
+        firstRender: () => measureFirstRender(render),
+        scroll: () => measureScroll(list),
+      };
+    </script>
+  </body>
+</html>

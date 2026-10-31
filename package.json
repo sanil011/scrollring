@@ -26,7 +26,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench": "node bench/run.mjs"
   },
   "types": "./dist/index.d.ts",
   "devDependencies": {

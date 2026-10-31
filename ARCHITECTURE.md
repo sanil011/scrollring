@@ -150,10 +150,27 @@ focus.
   and the list keeps working.
 - **Negative `scrollTop`** (macOS overscroll bounce) is treated as 0.
 
-## Testing notes
+## Testing
 
-- jsdom has no layout: component tests fake `clientHeight` and `scrollTop`,
-  and leave real layout checks to Playwright.
-- jsdom has no `ResizeObserver`: component tests stub it with a fake whose
-  callback the test fires by hand. A Playwright test resizes the real demo
-  and checks that a row only reachable with the bigger pool is drawn.
+Three layers:
+
+- **Unit** (Vitest, Node): the window math, including a property test that
+  steps `scrollTop` by 7px across 100k rows with non-round sizes and checks
+  the window never exceeds the pool.
+- **Component** (Vitest + jsdom): node count, ring slot assignment, `setData`
+  redraws, `scrollToIndex` clamping, `destroy`, errors in `renderItem`, a
+  container passed as an element, and pool growth on resize.
+- **Browser** (Playwright): the real demo page. Node count stays flat while
+  scrolling 100k rows, the last row is reachable, and making the list taller
+  adds nodes and fills the new space.
+
+jsdom has no layout and no `ResizeObserver`:
+
+- Component tests fake `clientHeight` and `scrollTop`, and leave real layout
+  checks to Playwright.
+- `ResizeObserver` is replaced by a fake whose callback the test fires by
+  hand. A Playwright test resizes the real demo and checks that a row only
+  reachable with the bigger pool is drawn.
+
+CI runs typecheck, unit and component tests, the build and the browser tests
+on every push and pull request.
