@@ -54,10 +54,11 @@ export function createScrollRing<T = unknown>(
 
   // The ring: row `i` is always drawn by nodes[i % poolSize]. The window is
   // never longer than poolSize, so its rows all map to different slots.
-  const poolSize = maxWindowSize(container.clientHeight, rowHeight, overscan);
-  const nodes = createNodes(spacer, poolSize, rowHeight);
+  let poolSize = maxWindowSize(container.clientHeight, rowHeight, overscan);
+  const nodes: HTMLElement[] = [];
+  addNodes(spacer, nodes, poolSize, rowHeight);
   // rowOf[slot] = the row nodes[slot] is showing, or EMPTY.
-  const rowOf = new Int32Array(poolSize).fill(EMPTY);
+  let rowOf = new Int32Array(poolSize).fill(EMPTY);
 
   let items: readonly T[] = [];
   // The window currently on screen; used to skip work when it hasn't moved.
@@ -131,6 +132,24 @@ export function createScrollRing<T = unknown>(
     painted = { start: 0, end: 0 };
   }
 
+  // A taller container needs a bigger window, so the pool must grow with it.
+  // It never shrinks: idle hidden nodes are cheap, and the container may grow
+  // back.
+  function onResize() {
+    if (!alive) return;
+
+    const needed = maxWindowSize(container.clientHeight, rowHeight, overscan);
+    if (needed > poolSize) {
+      addNodes(spacer, nodes, needed - poolSize, rowHeight);
+      poolSize = needed;
+      rowOf = new Int32Array(poolSize);
+      // poolSize changed, so `row % poolSize` changed for every row and the
+      // old slot assignments mean nothing. Start over.
+      clearSlots();
+    }
+    syncToScroll();
+  }
+
   function setData(newItems: readonly T[]): void {
     if (!alive) throw new Error("ScrollRing: setData() called after destroy()");
     if (!Array.isArray(newItems)) {
@@ -153,21 +172,29 @@ export function createScrollRing<T = unknown>(
     if (!alive) return;
     alive = false;
     container.removeEventListener("scroll", syncToScroll);
+    resizeObserver?.disconnect();
     spacer.remove();
   }
 
   container.addEventListener("scroll", syncToScroll, { passive: true });
 
+  // Not available in every environment (e.g. jsdom). Without it the pool
+  // keeps its first size and paintRange caps the window instead.
+  const resizeObserver =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+  resizeObserver?.observe(container);
+
   return { setData, scrollToIndex, destroy };
 }
 
-function createNodes(
+/** Creates `count` hidden row nodes, appends them to `parent` and to `nodes`. */
+function addNodes(
   parent: HTMLElement,
+  nodes: HTMLElement[],
   count: number,
   rowHeight: number,
-): HTMLElement[] {
+): void {
   const fragment = document.createDocumentFragment();
-  const nodes: HTMLElement[] = [];
 
   for (let i = 0; i < count; i++) {
     const node = document.createElement("div");
@@ -187,7 +214,6 @@ function createNodes(
   }
 
   parent.appendChild(fragment);
-  return nodes;
 }
 
 function getContainer(id: string): HTMLElement {
