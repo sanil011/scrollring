@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bench: scrollring</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      #list {
+        height: 400px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="list"></div>
+    <script type="module">
+      import { createScrollRing } from "../src/index";
+      import { data, ITEM_HEIGHT, measureFirstRender, measureScroll } from "./shared.js";
+
+      const list = document.getElementById("list");
+      let ring;
+
+      // Creating the ring builds the node pool, so it counts as render time.
+      function render() {
+        ring = createScrollRing({
+          container: list,
+          itemHeight: ITEM_HEIGHT,
+          renderItem(node, item) {
+            node.textContent = item.name;
+          },
+        });
+        ring.setData(data);
+      }
+
+      window.bench = {
+        firstRender: () => measureFirstRender(render),
+        scroll: () => measureScroll(list),
+      };
+    </script>
+  </body>
+</html>

@@ -84,59 +84,40 @@ If `renderItem` throws, the error is logged and the list keeps working.
 
 ## How it works
 
-1. A spacer element is as tall as the whole list (`count × itemHeight`), so the
-   browser draws a normal scrollbar.
-2. On scroll, the window of rows to render is computed from `scrollTop`:
-   the visible rows plus `buffer` rows on each side.
-3. The pool has exactly as many nodes as the largest possible window:
-   `ceil(viewportHeight / itemHeight) + 1 + 2 × buffer`.
-4. Row `i` goes to node `i % poolSize` and is moved into place with
-   `transform: translate3d(...)`. Nodes whose row left the window are hidden.
-5. A `ResizeObserver` watches the container. If it gets taller, nodes are
-   added to the pool and the window is repainted. The pool never shrinks.
+A spacer as tall as the whole list gives the browser a normal scrollbar. On
+scroll, the visible rows plus `buffer` rows on each side are drawn by a fixed
+pool of nodes, where row `i` always uses node `i % poolSize`. A
+`ResizeObserver` grows the pool if the container gets taller.
 
-Why two rows can never share a node is explained in
-[ARCHITECTURE.md](ARCHITECTURE.md).
+Why two rows can never share a node, and the trade-offs of this design, are
+in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Performance
 
-<!-- TODO: fill in from your own measurements. Do not copy numbers from elsewhere. -->
+100,000 rows, median of 20 runs (Chromium, Apple M1, CPU throttled 2×):
 
-| Metric                     | Naive (all rows) | scrollring |
-| -------------------------- | ---------------- | ---------- |
-| DOM nodes, 100k rows       | TODO             | TODO       |
-| Time to first render       | TODO             | TODO       |
-| Frame time p95 / p99       | TODO             | TODO       |
-| JS heap                    | TODO             | TODO       |
+| Metric                     | Naive (all rows)      | scrollring            |
+| -------------------------- | --------------------- | --------------------- |
+| DOM elements               | 100,009               | 121                   |
+| Time to first render       | 916 ms                | 18 ms (within one frame) |
+| Frame time p50 / p95 / p99 | 32.4 / 50.1 / 50.9 ms | 16.7 / 18.5 / 18.7 ms |
 
-**Method:** TODO: browser + version, OS, hardware, row count, how the scroll
-was scripted, median of N runs.
-
-## Testing
-
-Three layers:
-
-- **Unit** (Vitest, Node): the window math, including a property test that
-  steps `scrollTop` by 7px across 100k rows with non-round sizes and checks
-  the window never exceeds the pool.
-- **Component** (Vitest + jsdom): node count, ring slot assignment, `setData`
-  redraws, `scrollToIndex` clamping, `destroy`, errors in `renderItem`, and
-  pool growth on resize. jsdom has no layout, so `clientHeight` and
-  `scrollTop` are faked, and `ResizeObserver` is a fake the test fires by hand.
-- **Browser** (Playwright): the real demo page. Node count stays flat while
-  scrolling 100k rows, the last row is reachable, and making the list taller
-  adds nodes and fills the new space.
+Rows are text only, and the scroll is scripted. Full method, conditions and
+caveats: [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Development
 
 ```bash
 npm install
 npm run dev        # demo at http://localhost:5173/demo/
-npm test           # unit + component tests
-npm run test:e2e   # Playwright (starts Vite itself)
+npm test           # unit + component tests (Vitest, jsdom)
+npm run test:e2e   # browser tests (Playwright, starts Vite itself)
 npm run typecheck
 npm run build      # ESM + CJS + .d.ts into dist/
+npm run bench      # benchmark, see BENCHMARKS.md
 ```
+
+Testing strategy: [ARCHITECTURE.md](ARCHITECTURE.md#testing).
 
 ## Credits
 
