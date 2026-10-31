@@ -1,5 +1,7 @@
 # scrollring
 
+[![CI](https://github.com/sanil011/scrollring/actions/workflows/ci.yml/badge.svg)](https://github.com/sanil011/scrollring/actions/workflows/ci.yml)
+
 A small, framework-agnostic virtual list for the browser, written in TypeScript.
 It renders only the rows near the viewport and **reuses a fixed set of DOM
 nodes** while you scroll, so a list of 100,000 rows uses about the same number
