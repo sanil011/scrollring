@@ -1,20 +1,23 @@
 import { getWindow, maxWindowSize, type RowWindow } from "./math";
 
-export interface RowContext {
+export interface ItemContext {
+  /** Position of the item in the data array. */
   index: number;
 }
 
 export interface ScrollRingOptions<T> {
-  /** Fixed height of every row, in px. */
-  rowHeight: number;
-  /** Id of the scrolling element. It needs a fixed height in CSS. */
-  scrollContainer: string;
   /**
-   * Fill `node` with `item`. Nodes are reused for different rows, so this
+   * The scrolling element, or its id. It needs a fixed height in CSS.
+   */
+  container: HTMLElement | string;
+  /** Fixed height of every item, in px. */
+  itemHeight: number;
+  /**
+   * Fill `node` with `item`. Nodes are reused for different items, so this
    * must overwrite everything a previous call may have set.
    */
-  renderRow: (node: HTMLElement, item: T, ctx: RowContext) => void;
-  /** Extra rows rendered above and below the viewport. Default 50. */
+  renderItem: (node: HTMLElement, item: T, ctx: ItemContext) => void;
+  /** Extra items rendered above and below the viewport. Default 50. */
   buffer?: number;
 }
 
@@ -30,16 +33,16 @@ const EMPTY = -1;
 export function createScrollRing<T = unknown>(
   options: ScrollRingOptions<T>,
 ): ScrollRing<T> {
-  const container = getContainer(options.scrollContainer);
-  const { rowHeight, renderRow } = options;
+  const container = getContainer(options.container);
+  const { itemHeight, renderItem } = options;
   const overscan = options.buffer ?? DEFAULT_OVERSCAN;
 
-  if (rowHeight <= 0) {
+  if (itemHeight <= 0) {
     throw new Error(
-      "Please provide a fixed rowHeight for the container where elements will be rendered.",
+      "ScrollRing: itemHeight must be a positive number",
     );
   }
-  if (container.clientHeight < rowHeight) {
+  if (container.clientHeight < itemHeight) {
     throw new Error("Scroll container has no height");
   }
 
@@ -54,9 +57,9 @@ export function createScrollRing<T = unknown>(
 
   // The ring: row `i` is always drawn by nodes[i % poolSize]. The window is
   // never longer than poolSize, so its rows all map to different slots.
-  let poolSize = maxWindowSize(container.clientHeight, rowHeight, overscan);
+  let poolSize = maxWindowSize(container.clientHeight, itemHeight, overscan);
   const nodes: HTMLElement[] = [];
-  addNodes(spacer, nodes, poolSize, rowHeight);
+  addNodes(spacer, nodes, poolSize, itemHeight);
   // rowOf[slot] = the row nodes[slot] is showing, or EMPTY.
   let rowOf = new Int32Array(poolSize).fill(EMPTY);
 
@@ -72,7 +75,7 @@ export function createScrollRing<T = unknown>(
     const next = getWindow({
       scrollTop: container.scrollTop,
       viewportHeight: container.clientHeight,
-      rowHeight,
+      rowHeight: itemHeight,
       count: items.length,
       overscan,
     });
@@ -105,12 +108,12 @@ export function createScrollRing<T = unknown>(
 
       const node = nodes[slot];
       try {
-        renderRow(node, items[row], { index: row });
+        renderItem(node, items[row], { index: row });
       } catch (e) {
         // A bug in user code shouldn't break the list.
-        console.error("ScrollRing: renderRow threw", { index: row }, e);
+        console.error("ScrollRing: renderItem threw", { index: row }, e);
       }
-      node.style.transform = "translate3d(0," + row * rowHeight + "px,0)";
+      node.style.transform = "translate3d(0," + row * itemHeight + "px,0)";
       node.style.display = "";
       rowOf[slot] = row;
     }
@@ -138,9 +141,9 @@ export function createScrollRing<T = unknown>(
   function onResize() {
     if (!alive) return;
 
-    const needed = maxWindowSize(container.clientHeight, rowHeight, overscan);
+    const needed = maxWindowSize(container.clientHeight, itemHeight, overscan);
     if (needed > poolSize) {
-      addNodes(spacer, nodes, needed - poolSize, rowHeight);
+      addNodes(spacer, nodes, needed - poolSize, itemHeight);
       poolSize = needed;
       rowOf = new Int32Array(poolSize);
       // poolSize changed, so `row % poolSize` changed for every row and the
@@ -157,7 +160,7 @@ export function createScrollRing<T = unknown>(
     }
 
     items = newItems;
-    spacer.style.height = `${items.length * rowHeight}px`;
+    spacer.style.height = `${items.length * itemHeight}px`;
     clearSlots();
     syncToScroll();
   }
@@ -165,7 +168,7 @@ export function createScrollRing<T = unknown>(
   function scrollToIndex(index: number): void {
     if (!alive || items.length === 0) return;
     const row = Math.max(0, Math.min(Math.floor(index), items.length - 1));
-    container.scrollTop = row * rowHeight;
+    container.scrollTop = row * itemHeight;
   }
 
   function destroy(): void {
@@ -192,7 +195,7 @@ function addNodes(
   parent: HTMLElement,
   nodes: HTMLElement[],
   count: number,
-  rowHeight: number,
+  itemHeight: number,
 ): void {
   const fragment = document.createDocumentFragment();
 
@@ -204,7 +207,7 @@ function addNodes(
     st.top = "0";
     st.left = "0";
     st.right = "0";
-    st.height = `${rowHeight}px`;
+    st.height = `${itemHeight}px`;
     st.boxSizing = "border-box";
     // Row content can't change the size or paint of anything outside it.
     st.contain = "layout paint";
@@ -216,8 +219,9 @@ function addNodes(
   parent.appendChild(fragment);
 }
 
-function getContainer(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`ScrollRing: element #${id} not found`);
+function getContainer(target: HTMLElement | string): HTMLElement {
+  if (typeof target !== "string") return target;
+  const el = document.getElementById(target);
+  if (!el) throw new Error(`ScrollRing: element #${target} not found`);
   return el;
 }

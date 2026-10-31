@@ -1,7 +1,7 @@
 import { createScrollRing } from "../src/index";
 
 const TOTAL = 100_000;
-const ROW_HEIGHT = 40;
+const ITEM_HEIGHT = 40;
 
 const list = document.getElementById("list");
 const flashToggle = document.getElementById("flash");
@@ -12,7 +12,7 @@ const stat = {
   painted: document.getElementById("stat-painted"),
 };
 
-// Stats for the panel, collected from renderRow calls.
+// Stats for the panel, collected from renderItem calls.
 let paintedSinceUpdate = 0;
 let statsQueued = false;
 
@@ -29,9 +29,9 @@ function getSlot(node) {
 }
 
 const ring = createScrollRing({
-  scrollContainer: "list",
-  rowHeight: ROW_HEIGHT,
-  renderRow(node, item, { index }) {
+  container: "list",
+  itemHeight: ITEM_HEIGHT,
+  renderItem(node, item, { index }) {
     node.textContent = item.name;
     node.classList.toggle("alt", index % 2 === 1);
     node.dataset.slot = getSlot(node);
@@ -54,7 +54,7 @@ const data = Array.from({ length: TOTAL }, (_, i) => ({
 }));
 ring.setData(data);
 
-// Update the panel once per frame, after all renderRow calls of that frame.
+// Update the panel once per frame, after all renderItem calls of that frame.
 function queueStats() {
   if (statsQueued) return;
   statsQueued = true;

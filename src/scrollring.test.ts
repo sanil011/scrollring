@@ -49,10 +49,10 @@ describe("createScrollRing", () => {
   });
   const create = () =>
     createScrollRing<Item>({
-      scrollContainer: "list",
-      rowHeight: 40,
+      container: "list",
+      itemHeight: 40,
       buffer: 2,
-      renderRow: (node:any, item:any) => {
+      renderItem: (node:any, item:any) => {
         node.textContent = item.name;
       },
     });
@@ -86,7 +86,7 @@ describe("createScrollRing", () => {
     expect(container.querySelectorAll(".scroll-row")).toHaveLength(before);
   });
 
-  it("positions rows at index * rowHeight", () => {
+  it("positions rows at index * itemHeight", () => {
     const ring = create();
     ring.setData(makeItems(1000));
     scrollTo(container, 2020);
@@ -149,29 +149,29 @@ describe("createScrollRing", () => {
   });
 
   it("destroy removes the nodes and stops listening", () => {
-    const renderRow = vi.fn();
+    const renderItem = vi.fn();
     const ring = createScrollRing<Item>({
-      scrollContainer: "list",
-      rowHeight: 40,
-      renderRow,
+      container: "list",
+      itemHeight: 40,
+      renderItem,
     });
     ring.setData(makeItems(1000));
     ring.destroy();
 
-    renderRow.mockClear();
+    renderItem.mockClear();
     scrollTo(container, 5000);
 
     expect(container.querySelectorAll(".scroll-row")).toHaveLength(0);
-    expect(renderRow).not.toHaveBeenCalled();
+    expect(renderItem).not.toHaveBeenCalled();
     expect(() => ring.setData(makeItems(5))).toThrow(/after destroy/);
   });
 
-  it("survives a renderRow that throws", () => {
+  it("survives a renderItem that throws", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const ring = createScrollRing<Item>({
-      scrollContainer: "list",
-      rowHeight: 40,
-      renderRow: () => {
+      container: "list",
+      itemHeight: 40,
+      renderItem: () => {
         throw new Error("boom");
       },
     });
@@ -183,28 +183,46 @@ describe("createScrollRing", () => {
   it("rejects bad options with a clear message", () => {
     expect(() =>
       createScrollRing<Item>({
-        scrollContainer: "list",
-        rowHeight: 0,
-        renderRow: () => {},
+        container: "list",
+        itemHeight: 0,
+        renderItem: () => {},
       }),
-    ).toThrow(/rowHeight/);
+    ).toThrow(/itemHeight/);
 
     makeContainer(0, "flat"); // a container with no height
     expect(() =>
       createScrollRing<Item>({
-        scrollContainer: "flat",
-        rowHeight: 40,
-        renderRow: () => {},
+        container: "flat",
+        itemHeight: 40,
+        renderItem: () => {},
       }),
     ).toThrow("Scroll container has no height");
 
     expect(() =>
       createScrollRing<Item>({
-        scrollContainer: "missing-id",
-        rowHeight: 40,
-        renderRow: () => {},
+        container: "missing-id",
+        itemHeight: 40,
+        renderItem: () => {},
       }),
     ).toThrow(/not found/);
+  });
+
+  it("accepts the container element itself, not only its id", () => {
+    const detached = makeContainer(400, "other");
+    detached.removeAttribute("id"); // no id, so only the element can find it
+
+    const ring = createScrollRing<Item>({
+      container: detached,
+      itemHeight: 40,
+      buffer: 2,
+      renderItem: (node, item) => {
+        node.textContent = item.name;
+      },
+    });
+    ring.setData(makeItems(1000));
+
+    expect(detached.querySelectorAll(".scroll-row")).toHaveLength(15);
+    expect(shownRows(detached)[0]).toBe("Row 1");
   });
 });
 
@@ -240,10 +258,10 @@ describe("resizing the container", () => {
 
   const create = () =>
     createScrollRing<Item>({
-      scrollContainer: "list",
-      rowHeight: 40,
+      container: "list",
+      itemHeight: 40,
       buffer: 2,
-      renderRow: (node, item) => {
+      renderItem: (node, item) => {
         node.textContent = item.name;
       },
     });

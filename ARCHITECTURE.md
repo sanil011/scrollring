@@ -10,10 +10,10 @@ Code: [`src/math.ts`](src/math.ts) (pure math) and
 
 ```
 scroll container (fixed height, overflow: auto)
-└── spacer  (height = count × rowHeight → real scrollbar)
+└── spacer  (height = count × itemHeight → real scrollbar)
     ├── node 0   ┐
     ├── node 1   │ poolSize nodes, position: absolute,
-    ├── ...      │ moved with translate3d(0, row × rowHeight, 0)
+    ├── ...      │ moved with translate3d(0, row × itemHeight, 0)
     └── node N-1 ┘
 ```
 
@@ -33,8 +33,8 @@ On every resize of the container (`ResizeObserver`):
 ## 1. The window
 
 ```
-firstVisible     = floor(scrollTop / rowHeight)
-afterLastVisible = ceil((scrollTop + viewportHeight) / rowHeight)   // exclusive
+firstVisible     = floor(scrollTop / itemHeight)
+afterLastVisible = ceil((scrollTop + viewportHeight) / itemHeight)   // exclusive
 end   = min(count, afterLastVisible + overscan)
 start = min(end, max(0, firstVisible - overscan))
 ```
@@ -81,7 +81,7 @@ over one node.
 `paintRange` is two loops:
 
 1. For each row in `[start, end)`: if `rowOf[slot] === row`, skip it.
-   Otherwise call `renderRow`, set the transform, show the node, and update
+   Otherwise call `renderItem`, set the transform, show the node, and update
    `rowOf`.
 2. For each slot: if its row is outside `[start, end)`, hide it and set it
    to `-1`.
@@ -146,7 +146,7 @@ focus.
 - **Container resized.** Handled by the pool growth in section 4.
 - **`setData`.** Clears `rowOf` and the cached window. Otherwise the "skip if
   the slot already shows this row" check would leave old content on screen.
-- **`renderRow` throws.** The error is logged; the node is still positioned
+- **`renderItem` throws.** The error is logged; the node is still positioned
   and the list keeps working.
 - **Negative `scrollTop`** (macOS overscroll bounce) is treated as 0.
 

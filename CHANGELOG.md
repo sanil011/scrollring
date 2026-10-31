@@ -15,5 +15,6 @@ follow [Semantic Versioning](https://semver.org/).
   never shrinks.
 - Without `ResizeObserver`, the window is capped at the pool size (with one
   logged error) so rows never share a node.
-- TypeScript types; `renderRow` is typed with the item type.
+- Options: `container` (element or id), `itemHeight`, `renderItem`, `buffer`.
+- TypeScript types; `renderItem` is typed with the item type.
 - Demo page, and unit, component (jsdom) and browser (Playwright) tests.
