@@ -15,6 +15,9 @@ export interface ScrollRingOptions<T> {
   /**
    * Fill `node` with `item`. Nodes are reused for different items, so this
    * must overwrite everything a previous call may have set.
+   *
+   * Use `textContent`, not `innerHTML`, for user data: `innerHTML` would
+   * run any HTML in it (XSS).
    */
   renderItem: (node: HTMLElement, item: T, ctx: ItemContext) => void;
   /** Extra items rendered above and below the viewport. Default 50. */
