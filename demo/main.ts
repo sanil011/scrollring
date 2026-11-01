@@ -28,6 +28,16 @@ const stat = {
 let paintedSinceUpdate = 0;
 let statsQueued = false;
 
+// Respect the OS "reduce motion" setting.
+if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  flashToggle.checked = false;
+}
+
+// Read the flash color from CSS so it follows light and dark mode.
+const ROW_FLASH = getComputedStyle(document.documentElement)
+  .getPropertyValue("--flash")
+  .trim();
+
 // A node's slot is its position among the row nodes. Nodes never move, so
 // cache it instead of searching the DOM on every render.
 const slotOf = new WeakMap<HTMLElement, number>();
@@ -50,7 +60,7 @@ const ring = createScrollRing<Row>({
 
     if (flashToggle.checked) {
       node.animate(
-        [{ backgroundColor: "#fff1b8" }, { backgroundColor: "transparent" }],
+        [{ backgroundColor: ROW_FLASH }, { backgroundColor: "transparent" }],
         { duration: 500 },
       );
     }
@@ -76,14 +86,13 @@ function queueStats() {
 function updateStats() {
   statsQueued = false;
   const fmt = (n: number) => n.toLocaleString("en-US");
-  const shown = [...list.querySelectorAll<HTMLElement>(".scroll-row")].filter(
-    (n) => n.style.display !== "none",
-  );
+  const nodes = [...list.querySelectorAll<HTMLElement>(".scroll-row")];
+  const shown = nodes.filter((n) => n.style.display !== "none");
   // Row numbers as shown in the list ("Row 1" is the first).
   const rows = shown.map((n) => Number(n.textContent!.slice("Row ".length)));
 
   stat.total.textContent = fmt(TOTAL);
-  stat.nodes.textContent = fmt(list.querySelectorAll(".scroll-row").length);
+  stat.nodes.textContent = fmt(nodes.length);
   stat.window.textContent = rows.length
     ? `${fmt(Math.min(...rows))} – ${fmt(Math.max(...rows))}`
     : "-";
@@ -107,6 +116,23 @@ byId("jump").addEventListener("submit", (e) => {
   if (n >= 1) ring.scrollToIndex(n - 1);
 });
 
+byId("random").addEventListener("click", () => {
+  const n = 1 + Math.floor(Math.random() * TOTAL);
+  byId<HTMLInputElement>("jump-index").value = String(n);
+  ring.scrollToIndex(n - 1);
+});
+
+const copyButton = byId("copy");
+copyButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(byId("install-cmd").textContent!);
+    copyButton.textContent = "Copied";
+  } catch {
+    copyButton.textContent = "Press ⌘C";
+  }
+  setTimeout(() => (copyButton.textContent = "Copy"), 1500);
+});
+
 for (const button of document.querySelectorAll<HTMLElement>("[data-height]")) {
   button.addEventListener("click", () => {
     list.style.height = button.dataset.height + "px";
@@ -115,5 +141,3 @@ for (const button of document.querySelectorAll<HTMLElement>("[data-height]")) {
     }
   });
 }
-
-// setData above already queued the first stats update.
