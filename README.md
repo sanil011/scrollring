@@ -9,6 +9,8 @@ of DOM nodes as a list of 100.
 
 **[Live demo](https://sanil011.github.io/scrollring/)**: scroll 100,000 rows,
 watch the node count stay flat, and see which pool slot draws each row.
+**[API docs](https://sanil011.github.io/scrollring/api/)** are generated from
+the TSDoc comments.
 
 > **Learning project.** I built this to understand how list virtualization and
 > DOM node recycling work. It is small on purpose. For production apps, use a
@@ -35,6 +37,12 @@ watch the node count stay flat, and see which pool slot draws each row.
   repaints the visible rows instead of moving them. See
   [ARCHITECTURE.md](ARCHITECTURE.md#trade-offs).
 
+## Install
+
+```bash
+npm install scrollring
+```
+
 ## Quick start
 
 ```html
@@ -59,9 +67,6 @@ list.setData(
 );
 ```
 
-Not published to npm yet. Try the [live demo](https://sanil011.github.io/scrollring/),
-or clone the repo and run it locally (see [Development](#development)).
-
 ## API
 
 ### `createScrollRing<T>(options): ScrollRing<T>`
@@ -84,6 +89,10 @@ Throws if the element is not found, `itemHeight <= 0`, or the container has no h
 | `destroy()`          | Removes the scroll listener, stops the `ResizeObserver` and removes the nodes. The instance can't be reused. |
 
 If `renderItem` throws, the error is logged and the list keeps working.
+
+> **Security:** put user data into nodes with `textContent`, not `innerHTML`.
+> `innerHTML` parses the string as HTML, so a value like
+> `<img src=x onerror=alert(1)>` would run code (XSS).
 
 ## How it works
 
@@ -117,7 +126,7 @@ npm test           # unit + component tests (Vitest, jsdom)
 npm run test:e2e   # browser tests (Playwright, starts Vite itself)
 npm run typecheck
 npm run build      # ESM + CJS + .d.ts into dist/
-npm run build:demo # production build of the demo into site/
+npm run build:site # demo + API docs (TypeDoc) into site/, as deployed
 npm run bench      # benchmark, see BENCHMARKS.md
 ```
 

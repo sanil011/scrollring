@@ -75,8 +75,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Build demo
-        run: npm run build:demo
+      - name: Build demo and API docs
+        run: npm run build:site
 
       - uses: actions/configure-pages@v6
 

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "site/api",
+  "name": "scrollring API",
+  "readme": "none",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "treatWarningsAsErrors": true
+}
