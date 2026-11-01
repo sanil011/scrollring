@@ -7,6 +7,9 @@ It renders only the rows near the viewport and **reuses a fixed set of DOM
 nodes** while you scroll, so a list of 100,000 rows uses about the same number
 of DOM nodes as a list of 100.
 
+**[Live demo](https://sanil011.github.io/scrollring/)**: scroll 100,000 rows,
+watch the node count stay flat, and see which pool slot draws each row.
+
 > **Learning project.** I built this to understand how list virtualization and
 > DOM node recycling work. It is small on purpose. For production apps, use a
 > mature library such as [TanStack Virtual](https://tanstack.com/virtual) or
@@ -56,8 +59,8 @@ list.setData(
 );
 ```
 
-Not published to npm yet. To try it, clone the repo and run the demo
-(see [Development](#development)).
+Not published to npm yet. Try the [live demo](https://sanil011.github.io/scrollring/),
+or clone the repo and run it locally (see [Development](#development)).
 
 ## API
 
@@ -114,6 +117,7 @@ npm test           # unit + component tests (Vitest, jsdom)
 npm run test:e2e   # browser tests (Playwright, starts Vite itself)
 npm run typecheck
 npm run build      # ESM + CJS + .d.ts into dist/
+npm run build:demo # production build of the demo into site/
 npm run bench      # benchmark, see BENCHMARKS.md
 ```
 

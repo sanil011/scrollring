@@ -23,6 +23,7 @@
   "scripts": {
     "dev": "vite --open /demo/",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build:demo": "vite build demo --base=/scrollring/ --outDir=../site --emptyOutDir",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
