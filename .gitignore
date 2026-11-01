@@ -6,3 +6,7 @@ test-results
 playwright-report
 coverage
 CLAUDE.md
+
+# private notes, never commit
+notes/
+site
