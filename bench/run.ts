@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Runs both benchmark pages in Chromium and prints the median of each metric.
 //
 //   npm run bench                 10 runs per page, headless
@@ -7,7 +8,25 @@
 
 import { spawn } from "node:child_process";
 import os from "node:os";
-import { chromium } from "@playwright/test";
+import { chromium, type Browser } from "@playwright/test";
+
+// Set up by the inline script in bench/naive.html and bench/ring.html.
+declare global {
+  interface Window {
+    bench: {
+      firstRender(): Promise<number>;
+      scroll(): Promise<number[]>;
+    };
+  }
+}
+
+interface RunResult {
+  elements: number;
+  firstRenderMs: number;
+  frameP50: number;
+  frameP95: number;
+  frameP99: number;
+}
 
 const RUNS = Number(process.env.RUNS ?? 10);
 const HEADED = process.env.HEADED === "1";
@@ -20,10 +39,10 @@ const PAGES = [
   { name: "scrollring", url: `${BASE}/ring.html` },
 ];
 
-const median = (xs) => percentile(xs, 50);
+const median = (xs: number[]) => percentile(xs, 50);
 
 // Nearest-rank percentile.
-function percentile(xs, p) {
+function percentile(xs: number[], p: number): number {
   const sorted = [...xs].sort((a, b) => a - b);
   const rank = Math.ceil((p / 100) * sorted.length);
   return sorted[Math.max(0, rank - 1)];
@@ -47,7 +66,7 @@ async function startVite() {
 }
 
 /** One measurement on a fresh page, so runs can't affect each other. */
-async function measureOnce(browser, url) {
+async function measureOnce(browser: Browser, url: string): Promise<RunResult> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
   if (CPU_SLOWDOWN > 1) {
@@ -81,14 +100,14 @@ const browser = await chromium.launch({ headless: !HEADED });
 try {
   const rows = [];
   for (const { name, url } of PAGES) {
-    const runs = [];
+    const runs: RunResult[] = [];
     for (let i = 0; i < RUNS; i++) {
       runs.push(await measureOnce(browser, url));
       process.stdout.write(`\r${name}: run ${i + 1}/${RUNS}   `);
     }
     process.stdout.write("\n");
 
-    const med = (key) => median(runs.map((r) => r[key]));
+    const med = (key: keyof RunResult) => median(runs.map((r) => r[key]));
     rows.push({
       page: name,
       "DOM elements": med("elements"),

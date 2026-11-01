@@ -44,9 +44,9 @@ up to ~16.7 ms at 60 Hz, so this is close to the lowest value it can report.
 
 The two pages, [`bench/naive.html`](bench/naive.html) and
 [`bench/ring.html`](bench/ring.html), share data, row size, container and
-measuring code ([`bench/shared.js`](bench/shared.js)), so the only difference
+measuring code ([`bench/shared.ts`](bench/shared.ts)), so the only difference
 is how rows get into the DOM.
-[`bench/run.mjs`](bench/run.mjs) opens each page in a fresh browser context
+[`bench/run.ts`](bench/run.ts) opens each page in a fresh browser context
 for every run and reports the median.
 
 - **DOM elements:** `document.getElementsByTagName("*").length` after the
